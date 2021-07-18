@@ -20,8 +20,8 @@ if clientID!=-1:
     res, v2 = vrep.simxGetObjectHandle(clientID, 'right_light', vrep.simx_opmode_oneshot_wait)
     res, v3 = vrep.simxGetObjectHandle(clientID, 'middle_light', vrep.simx_opmode_oneshot_wait)
 
-    err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, 1, vrep.simx_opmode_streaming)
-    err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, 1, vrep.simx_opmode_streaming)
+    err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle,2, vrep.simx_opmode_streaming)
+    err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, 2, vrep.simx_opmode_streaming)
 
     resultR,slaR,dataR = vrep.simxReadVisionSensor(clientID, v2, vrep.simx_opmode_streaming)
     resultL,slaL,dataL = vrep.simxReadVisionSensor(clientID, v1, vrep.simx_opmode_streaming)
@@ -46,8 +46,8 @@ if clientID!=-1:
                     err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, 1, vrep.simx_opmode_streaming)
                     err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, desiredangle, vrep.simx_opmode_streaming)
                 if (dataR[0][11] > 0.4) and (dataL[0][11] > 0.4):
-                    err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, 1, vrep.simx_opmode_streaming)
-                    err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, 1, vrep.simx_opmode_streaming)    
+                    err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, 2, vrep.simx_opmode_streaming)
+                    err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, 2, vrep.simx_opmode_streaming)    
 
         elif (errL == vrep.simx_return_novalue_flag):
             pass
