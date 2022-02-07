@@ -4,20 +4,39 @@ import time
 import math
 import matplotlib.pyplot as mlp
 
+import threading 
+
 from PIL import Image as I
 import array
 import cv2
 
-vrep.simxFinish(-1) # just in case, close all opened connections
+def camera_control(clientID):
+    print("Runing camera")
 
-clientID=vrep.simxStart('127.0.0.1', 19999, True, True, 5000,5) # start a connection
+    res, v0 = vrep.simxGetObjectHandle(clientID0, 'v0', vrep.simx_opmode_oneshot_wait)
+    err, resolution, image = vrep.simxGetVisionSensorImage(clientID0, v0, 0, vrep.simx_opmode_streaming)
+    time.sleep(1)
 
-if clientID!=-1:
+    while vrep.simxGetConnectionId(clientID) != -1:
+        err, resolution, image = vrep.simxGetVisionSensorImage(clientID, v0, 0, vrep.simx_opmode_buffer)
 
-    print ("Connected to remote API server")
+        if err == vrep.simx_return_ok:
+            img = np.array(image,dtype=np.uint8)
+            img.resize([resolution[1],resolution[0],3])
+            cv2.imshow('image',img)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        elif err == vrep.simx_return_novalue_flag:
+            pass
+        else:
+            print (err)
 
+def joint_control(clientID):
+
+    print("Runing joint")
+
+    speed = 1
     desiredSteeringAngle = 0
-
     count = 0
     d=0.755 # 2*d=distance between left and right wheels
     l=2.5772 # l=distance between front and read wheels
@@ -35,8 +54,6 @@ if clientID!=-1:
 
     err_code,cilinder = vrep.simxGetObjectHandle(clientID, 'cyl', vrep.simx_opmode_oneshot_wait)
 
-    speed = 1
-
     err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
     err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
     err_code = vrep.simxSetJointTargetPosition(clientID, steeringLeft, 0, vrep.simx_opmode_streaming)
@@ -46,29 +63,10 @@ if clientID!=-1:
     resultL,slaL,dataL = vrep.simxReadVisionSensor(clientID, v1, vrep.simx_opmode_streaming)
     resultM,slaM,dataM = vrep.simxReadVisionSensor(clientID, v3, vrep.simx_opmode_streaming)
 
-    res, v0 = vrep.simxGetObjectHandle(clientID, 'v0', vrep.simx_opmode_oneshot_wait)
-    err, resolution, image = vrep.simxGetVisionSensorImage(clientID, v0, 0, vrep.simx_opmode_streaming)
-    time.sleep(1)
-
     errFS,slaFS,dataFS,dhFS,dvFS = vrep.simxReadProximitySensor(clientID, ds, vrep.simx_opmode_streaming)
 
     while vrep.simxGetConnectionId(clientID) != -1:
 
-        err, resolution, image = vrep.simxGetVisionSensorImage(clientID, v0, 0, vrep.simx_opmode_buffer)
-
-        if err == vrep.simx_return_ok:
-            print ("image OK!!!")
-            img = np.array(image,dtype=np.uint8)
-            img.resize([resolution[1],resolution[0],3])
-            cv2.imshow('image',img)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-        elif err == vrep.simx_return_novalue_flag:
-            print ("no image yet")
-            pass
-        else:
-            print (err)
-        
         count = count + 1
 
         errR,slaR,dataR = vrep.simxReadVisionSensor(clientID, v2, vrep.simx_opmode_buffer)
@@ -98,11 +96,11 @@ if clientID!=-1:
                     speed = speed + 0.01
                     err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
                     err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
-                
+                    
                 speed = 1
                 err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
                 err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
-            
+                
         if (errL == vrep.simx_return_ok):
 
             if count > 1:
@@ -128,6 +126,17 @@ if clientID!=-1:
 
         else:
             break
-else:
-    print("Not connected to remote API server")
-    vrep.simxFinish(clientID)
+
+if __name__ == "__main__": 
+    vrep.simxFinish(-1) # just in case, close all opened connections
+    clientID0=vrep.simxStart('127.0.0.1', 19999, True, True, 5000,5) # start a connection
+
+    if clientID0!=-1:
+            threading.Thread(target=joint_control, args=(clientID0,)).start()
+            threading.Thread(target=camera_control, args=(clientID0,)).start()
+            
+
+    else:
+        print("Not connected to remote API server")
+        vrep.simxFinish(clientID0)
+
