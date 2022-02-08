@@ -3,15 +3,33 @@ import numpy as np
 import time
 import math
 import matplotlib.pyplot as mlp
-
 import threading 
-
 from PIL import Image as I
 import array
 import cv2
 
+#Function that filter only red color (used as substitute for stop sign) and see the distance based os the percentage of red pixels in frame
+def track_red_object(img):
+    blur_img = cv2.GaussianBlur(img, (5,5),0)
+
+    hsv_img = cv2.cvtColor(blur_img, cv2.COLOR_BGR2HSV)
+
+    low_red = np.array([0, 100, 100])
+    high_red = np.array([179, 255, 255])
+    red_mask = cv2.inRange(hsv_img, low_red, high_red)
+
+    n_white_pix = np.sum(red_mask == 255)
+
+    num_rows, num_cols = red_mask.shape
+    total = num_cols * num_rows
+
+    percent = (n_white_pix/total) * 100
+
+    return percent
+
+#Function that will run as thread to control all cameras used to detection
 def camera_control(clientID):
-    print("Runing camera")
+    print("Runing camera thread")
 
     res, v0 = vrep.simxGetObjectHandle(clientID0, 'v0', vrep.simx_opmode_oneshot_wait)
     err, resolution, image = vrep.simxGetVisionSensorImage(clientID0, v0, 0, vrep.simx_opmode_streaming)
@@ -23,17 +41,28 @@ def camera_control(clientID):
         if err == vrep.simx_return_ok:
             img = np.array(image,dtype=np.uint8)
             img.resize([resolution[1],resolution[0],3])
-            cv2.imshow('image',img)
+            try:
+                cv2.imshow('image',img)
+            except:
+                print('Camera crashed')
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
+
+            stop_indicator = track_red_object(img)
+
+            if (stop_indicator >= 50.0):
+                print("I should stop")
+
         elif err == vrep.simx_return_novalue_flag:
             pass
         else:
             print (err)
 
+
+#Function that will run as thread to control all of basics movements of vehicle, plus the collision detection
 def joint_control(clientID):
 
-    print("Runing joint")
+    print("Runing joint thread")
 
     speed = 1
     desiredSteeringAngle = 0
@@ -103,23 +132,26 @@ def joint_control(clientID):
                 
         if (errL == vrep.simx_return_ok):
 
-            if count > 1:
-                if dataR[0][11] < 0.4:
-                    desiredSteeringAngle = -(45*math.pi)/180
-                if dataL[0][11] < 0.4:
-                    desiredSteeringAngle = (45*math.pi)/180
-                if (dataR[0][11] > 0.4) and (dataL[0][11] > 0.4):
-                    desiredSteeringAngle = 0  
+            try:
+                if count > 1:
+                    if dataR[0][11] < 0.4:
+                        desiredSteeringAngle = -(45*math.pi)/180
+                    if dataL[0][11] < 0.4:
+                        desiredSteeringAngle = (45*math.pi)/180
+                    if (dataR[0][11] > 0.4) and (dataL[0][11] > 0.4):
+                        desiredSteeringAngle = 0  
 
-            if desiredSteeringAngle != 0:
-                steeringAngleLeft=math.atan(l/(-d+l/math.tan(desiredSteeringAngle)))
-                steeringAngleRight=math.atan(l/(d+l/math.tan(desiredSteeringAngle)))
-            else:
-                steeringAngleLeft = 0
-                steeringAngleRight = 0
+                if desiredSteeringAngle != 0:
+                    steeringAngleLeft=math.atan(l/(-d+l/math.tan(desiredSteeringAngle)))
+                    steeringAngleRight=math.atan(l/(d+l/math.tan(desiredSteeringAngle)))
+                else:
+                    steeringAngleLeft = 0
+                    steeringAngleRight = 0
 
-            err_code = vrep.simxSetJointTargetPosition(clientID, steeringLeft, steeringAngleLeft, vrep.simx_opmode_streaming)
-            err_code = vrep.simxSetJointTargetPosition(clientID, steeringRight, steeringAngleRight, vrep.simx_opmode_streaming)
+                err_code = vrep.simxSetJointTargetPosition(clientID, steeringLeft, steeringAngleLeft, vrep.simx_opmode_streaming)
+                err_code = vrep.simxSetJointTargetPosition(clientID, steeringRight, steeringAngleRight, vrep.simx_opmode_streaming)
+            except:
+                print("Something broke")
 
         elif (errL == vrep.simx_return_novalue_flag):
             pass
@@ -127,13 +159,15 @@ def joint_control(clientID):
         else:
             break
 
+
 if __name__ == "__main__": 
     vrep.simxFinish(-1) # just in case, close all opened connections
     clientID0=vrep.simxStart('127.0.0.1', 19999, True, True, 5000,5) # start a connection
 
     if clientID0!=-1:
-            threading.Thread(target=joint_control, args=(clientID0,)).start()
-            threading.Thread(target=camera_control, args=(clientID0,)).start()
+        #Start threads
+        threading.Thread(target=joint_control, args=(clientID0,)).start()
+        threading.Thread(target=camera_control, args=(clientID0,)).start()
             
 
     else:

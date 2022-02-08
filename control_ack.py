@@ -57,14 +57,12 @@ if clientID!=-1:
         err, resolution, image = vrep.simxGetVisionSensorImage(clientID, v0, 0, vrep.simx_opmode_buffer)
 
         if err == vrep.simx_return_ok:
-            print ("image OK!!!")
             img = np.array(image,dtype=np.uint8)
             img.resize([resolution[1],resolution[0],3])
             cv2.imshow('image',img)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         elif err == vrep.simx_return_novalue_flag:
-            print ("no image yet")
             pass
         else:
             print (err)
