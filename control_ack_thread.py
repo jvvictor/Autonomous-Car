@@ -8,11 +8,13 @@ from PIL import Image as I
 import array
 import cv2
 
+stop_sign = False
+
 #Function that filter only red color (used as substitute for stop sign) and see the distance based os the percentage of red pixels in frame
 def track_red_object(img):
-    blur_img = cv2.GaussianBlur(img, (5,5),0)
+    # blur_img = cv2.GaussianBlur(img, (5,5),0)
 
-    hsv_img = cv2.cvtColor(blur_img, cv2.COLOR_BGR2HSV)
+    hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
     low_red = np.array([0, 100, 100])
     high_red = np.array([179, 255, 255])
@@ -31,27 +33,49 @@ def track_red_object(img):
 def camera_control(clientID):
     print("Runing camera thread")
 
-    res, v0 = vrep.simxGetObjectHandle(clientID0, 'v0', vrep.simx_opmode_oneshot_wait)
-    err, resolution, image = vrep.simxGetVisionSensorImage(clientID0, v0, 0, vrep.simx_opmode_streaming)
+    res, vs0 = vrep.simxGetObjectHandle(clientID, 'v0', vrep.simx_opmode_oneshot_wait)
+    res, vs1 = vrep.simxGetObjectHandle(clientID0, 'v1', vrep.simx_opmode_oneshot_wait)
+    err, resolution, image = vrep.simxGetVisionSensorImage(clientID, vs0, 0, vrep.simx_opmode_streaming)
+    err, resolution2, image2 = vrep.simxGetVisionSensorImage(clientID, vs1, 0, vrep.simx_opmode_streaming)
     time.sleep(1)
 
+    cv2.namedWindow("Right")
+    cv2.namedWindow("Left")
+
     while vrep.simxGetConnectionId(clientID) != -1:
-        err, resolution, image = vrep.simxGetVisionSensorImage(clientID, v0, 0, vrep.simx_opmode_buffer)
+        err, resolution, image = vrep.simxGetVisionSensorImage(clientID, vs0, 0, vrep.simx_opmode_buffer)
+        err, resolution2, image2 = vrep.simxGetVisionSensorImage(clientID, vs1, 0, vrep.simx_opmode_buffer)
+
+        global stop_sign
 
         if err == vrep.simx_return_ok:
             img = np.array(image,dtype=np.uint8)
             img.resize([resolution[1],resolution[0],3])
+            img2 = np.array(image2,dtype=np.uint8)
+            img2.resize([resolution2[1],resolution2[0],3])
             try:
-                cv2.imshow('image',img)
+                cv2.imshow('Right',img)
+                cv2.imshow('Left',img2)
             except:
                 print('Camera crashed')
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-            stop_indicator = track_red_object(img)
+            stop_indicator_right = track_red_object(img)
+            stop_indicator_left= track_red_object(img2)
 
-            if (stop_indicator >= 50.0):
-                print("I should stop")
+            if (stop_indicator_right >= 50.0):
+                print("Stop sign on right side")
+                stop_sign = True
+                time.sleep(2)
+                stop_sign = False
+                time.sleep(1)
+            if (stop_indicator_left >= 50.0):
+                print("Stop sign on left side")
+                stop_sign = True
+                time.sleep(2)
+                stop_sign = False
+                time.sleep(1)
 
         elif err == vrep.simx_return_novalue_flag:
             pass
@@ -79,7 +103,6 @@ def joint_control(clientID):
 
     res,v1 = vrep.simxGetObjectHandle(clientID, 'left_light', vrep.simx_opmode_oneshot_wait)   
     res,v2 = vrep.simxGetObjectHandle(clientID, 'right_light', vrep.simx_opmode_oneshot_wait)
-    res,v3 = vrep.simxGetObjectHandle(clientID, 'middle_light', vrep.simx_opmode_oneshot_wait)
 
     err_code,cilinder = vrep.simxGetObjectHandle(clientID, 'cyl', vrep.simx_opmode_oneshot_wait)
 
@@ -90,9 +113,10 @@ def joint_control(clientID):
 
     resultR,slaR,dataR = vrep.simxReadVisionSensor(clientID, v2, vrep.simx_opmode_streaming)
     resultL,slaL,dataL = vrep.simxReadVisionSensor(clientID, v1, vrep.simx_opmode_streaming)
-    resultM,slaM,dataM = vrep.simxReadVisionSensor(clientID, v3, vrep.simx_opmode_streaming)
 
     errFS,slaFS,dataFS,dhFS,dvFS = vrep.simxReadProximitySensor(clientID, ds, vrep.simx_opmode_streaming)
+
+    global stop_sign
 
     while vrep.simxGetConnectionId(clientID) != -1:
 
@@ -100,36 +124,41 @@ def joint_control(clientID):
 
         errR,slaR,dataR = vrep.simxReadVisionSensor(clientID, v2, vrep.simx_opmode_buffer)
         errL,slaL,dataL = vrep.simxReadVisionSensor(clientID, v1, vrep.simx_opmode_buffer)
-        errM,slaM,dataM = vrep.simxReadVisionSensor(clientID, v3, vrep.simx_opmode_buffer)
 
         errFS,slaFS,dataFS,dhFS,dvFS = vrep.simxReadProximitySensor(clientID, ds, vrep.simx_opmode_buffer)
 
         dist = np.linalg.norm(dataFS)
 
-        if (dist < 0.2) and (dist > 0.01):
-            if (speed >= 0.1):
-                speed = speed - 0.01
-                err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
-                err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
-            else:
-                speed = 0.01
-                err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
-                err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
+        # print(stop_sign)
 
-                time.sleep(1)
-
-                err_code = vrep.simxSetObjectPosition(clientID,cilinder,-1,[-10.0,-10.0,-10.0],vrep.simx_opmode_oneshot)
+        if (stop_sign == True):
+            speed = 0.001
+            err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
+            err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
         else:
-            if (speed < 1):
-                while (speed < 1):
-                    speed = speed + 0.01
+            if (dist < 0.2) and (dist > 0.01):
+                if (speed >= 0.1):
+                    speed = speed - 0.01
                     err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
                     err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
-                    
-                speed = 1
-                err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
-                err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
-                
+                else:
+                    speed = 0.01
+                    err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
+                    err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
+
+                    time.sleep(1)
+
+                    err_code = vrep.simxSetObjectPosition(clientID,cilinder,-1,[-10.0,-10.0,-10.0],vrep.simx_opmode_oneshot)
+            else:
+                if (speed < 1):
+                    while (speed < 1):
+                        speed = speed + 0.01
+                        err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
+                        err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)
+                        
+                    speed = 1
+                    err_code = vrep.simxSetJointTargetVelocity(clientID, l_motor_handle, speed, vrep.simx_opmode_streaming)
+                    err_code = vrep.simxSetJointTargetVelocity(clientID, r_motor_handle, speed, vrep.simx_opmode_streaming)   
         if (errL == vrep.simx_return_ok):
 
             try:
